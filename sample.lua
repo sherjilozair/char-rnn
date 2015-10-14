@@ -28,6 +28,8 @@ cmd:argument('-model','model checkpoint to use for sampling')
 cmd:option('-seed',123,'random number generator\'s seed')
 cmd:option('-sample',1,' 0 to use max at each timestep, 1 to sample at each timestep')
 cmd:option('-primetext',"",'used as a prompt to "seed" the state of the LSTM using a given sequence, before we sample.')
+cmd:option('-instate',"",'the initial state file to use')
+cmd:option('-outstate',"",'file to store final state')
 cmd:option('-length',2000,'number of characters to sample')
 cmd:option('-temperature',1,'temperature of sampling')
 cmd:option('-gpuid',0,'which gpu to use. -1 = use CPU')
@@ -95,16 +97,20 @@ for c,i in pairs(vocab) do ivocab[i] = c end
 -- initialize the rnn state to all zeros
 gprint('creating an ' .. checkpoint.opt.model .. '...')
 local current_state
-current_state = {}
-for L = 1,checkpoint.opt.num_layers do
-    -- c and h for all layers
-    local h_init = torch.zeros(1, checkpoint.opt.rnn_size):double()
-    if opt.gpuid >= 0 and opt.opencl == 0 then h_init = h_init:cuda() end
-    if opt.gpuid >= 0 and opt.opencl == 1 then h_init = h_init:cl() end
-    table.insert(current_state, h_init:clone())
-    if checkpoint.opt.model == 'lstm' then
+if opt.instate == "" then
+    current_state = {}
+    for L = 1,checkpoint.opt.num_layers do
+        -- c and h for all layers
+        local h_init = torch.zeros(1, checkpoint.opt.rnn_size):double()
+        if opt.gpuid >= 0 and opt.opencl == 0 then h_init = h_init:cuda() end
+        if opt.gpuid >= 0 and opt.opencl == 1 then h_init = h_init:cl() end
         table.insert(current_state, h_init:clone())
+        if checkpoint.opt.model == 'lstm' then
+            table.insert(current_state, h_init:clone())
+        end
     end
+else
+    current_state = torch.load(opt.instate)
 end
 state_size = #current_state
 
@@ -156,6 +162,9 @@ for i=1, opt.length do
     prediction = lst[#lst] -- last element holds the log probabilities
 
     io.write(ivocab[prev_char[1]])
+end
+if opt.outstate ~= "" then
+    torch.save(opt.outstate, current_state)
 end
 io.write('\n') io.flush()
 
